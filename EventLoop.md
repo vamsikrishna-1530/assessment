@@ -41,3 +41,141 @@ The event loop is a fundamental concept in web development, especially when deal
 ## Conclusion
 
 The event loop is essential for performing non-blocking operations in JavaScript environments. It allows the integration of asynchronous events seamlessly into the synchronous JavaScript engine, ensuring that complex web apps remain responsive and performant. Understanding the event loop helps developers write more efficient code by optimizing rendering times and improving the handling of asynchronous operations.
+
+
+### **Interview Question: What is the Event Loop in Node.js, and how does it work in detail?**  
+
+#### **Theoretical Answer:**  
+The **Event Loop** is the core mechanism in Node.js that handles asynchronous operations and non-blocking I/O. Since Node.js is single-threaded, it relies on the event loop to efficiently manage tasks like file operations, network requests, and timers.  
+
+Node.js uses **libuv**, which provides an abstraction over OS-level asynchronous operations (like I/O, timers, and networking).  
+
+---
+
+### **How the Event Loop Works in Detail**  
+
+The event loop runs in **phases**, processing different types of tasks in each cycle. Here’s a deep breakdown:  
+
+### **1️⃣ Timers Phase**
+- Executes **callbacks** scheduled by `setTimeout()` and `setInterval()`.  
+- If a timer expires, its callback is pushed into the callback queue.  
+- It **does not** execute precisely at the scheduled time due to other queued tasks.  
+
+📌 **Example:**  
+```js
+setTimeout(() => {
+  console.log("Timer 1");
+}, 0);
+```
+Even with `0ms` delay, execution depends on the event loop phase.  
+
+---
+
+### **2️⃣ I/O Callbacks Phase**
+- Executes **non-blocking I/O callbacks**, like file system operations.  
+- Example: `fs.readFile()` callback is executed here.  
+
+📌 **Example:**  
+```js
+const fs = require("fs");
+
+fs.readFile("file.txt", "utf-8", (err, data) => {
+  console.log("File read completed");
+});
+```
+This callback runs **after timers if pending**.  
+
+---
+
+### **3️⃣ Idle & Prepare Phase** *(Internal Phase – Rarely Used)*
+- Used internally by **libuv** for optimization.  
+
+---
+
+### **4️⃣ Poll Phase**  
+- Retrieves **new I/O events** and executes callbacks.  
+- **If the queue is empty**, it waits for incoming connections.  
+- **If timers are pending, it moves to the next phase immediately.**  
+
+📌 **Example:**  
+```js
+const fs = require("fs");
+
+setTimeout(() => console.log("Timer callback"), 0);
+
+fs.readFile("file.txt", "utf-8", () => {
+  console.log("File read callback");
+});
+
+console.log("Synchronous log");
+```
+**Execution Order:**  
+✅ `Synchronous log` (Main thread execution)  
+✅ File read starts (handled asynchronously)  
+✅ Timer **(may execute before or after the file read, depending on completion time)**  
+
+---
+
+### **5️⃣ Check Phase (for `setImmediate`)**  
+- Executes callbacks scheduled using `setImmediate()`.  
+- This runs **after the poll phase**, ensuring execution after I/O.  
+
+📌 **Example:**  
+```js
+setImmediate(() => console.log("setImmediate callback"));
+setTimeout(() => console.log("setTimeout callback"), 0);
+```
+✅ `setImmediate` executes **before** `setTimeout(0)` in most cases.  
+
+---
+
+### **6️⃣ Close Callbacks Phase**
+- Executes callbacks for **closed resources**, like `socket.on("close")`.  
+
+📌 **Example:**  
+```js
+const net = require("net");
+const server = net.createServer((socket) => {
+  socket.end("Goodbye\n");
+});
+
+server.listen(8080, () => {
+  console.log("Server running...");
+});
+
+server.on("close", () => {
+  console.log("Server closed.");
+});
+```
+If the server is manually closed, the `"Server closed."` message appears in this phase.  
+
+---
+
+### **Understanding Task Queues and Microtasks**  
+
+#### **Microtasks (Higher Priority Tasks)**
+- These run **before the next event loop cycle** starts.  
+- Examples: **`process.nextTick()` and Promises (`.then()`)**  
+
+📌 **Example:**
+```js
+setTimeout(() => console.log("setTimeout"), 0);
+setImmediate(() => console.log("setImmediate"));
+
+process.nextTick(() => console.log("nextTick"));
+Promise.resolve().then(() => console.log("Promise"));
+
+console.log("Synchronous");
+```
+✅ **Execution Order:**  
+1️⃣ `Synchronous`  
+2️⃣ `nextTick` (Microtask)  
+3️⃣ `Promise` (Microtask)  
+4️⃣ `setTimeout` **OR** `setImmediate` (Order depends on poll phase timing)  
+
+---
+
+### **Key Takeaways for Optimization**
+✅ **Use `process.nextTick()` cautiously** – it can delay the event loop.  
+✅ **Use `setImmediate()` for deferring execution** after I/O completion.  
+✅ **Prefer Promises over callbacks** for better control over async execution.  
